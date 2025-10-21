@@ -2,6 +2,8 @@
 
 \*.pyc  
 pycache/
+*.pyc
+__pycache__
 
 # **Virtual Environment**
 
