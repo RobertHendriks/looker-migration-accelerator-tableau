@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Looker Migration Accelerator</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --looker-purple: #5C1DAB;
+            --looker-blue: #1A73E8;
+        }
+        /* Custom scrollbar for output area */
+        #output-area::-webkit-scrollbar {
+            width: 8px;
+        }
+        #output-area::-webkit-scrollbar-thumb {
+            background-color: var(--looker-blue);
+            border-radius: 4px;
+        }
+        #output-area::-webkit-scrollbar-track {
+            background-color: #f1f1f1;
+        }
+        .text-looker-purple { color: var(--looker-purple); }
+    </style>
+    <script>
+        // --- VISUALIZATION MAPPING LOGIC (Simulated from utility.py) ---
+        const VIS_MAP = {
+            'line_chart': 'looker_line',
+            'bar_chart': 'looker_column',
+            'map': 'looker_geo_coordinates', 
+            'default': 'table'
+        };
+
+        function mapTableauVisToLooker(fileName) {
+            // Note: In the real Python backend, this logic is more robust.
+            // This client-side function is primarily for display during file logging.
+            if (fileName.toLowerCase().includes("linechart")) return VIS_MAP['line_chart'];
+            if (fileName.toLowerCase().includes("map")) return VIS_MAP['map'];
+            return VIS_MAP['default'];
+        }
+
+        // --- MIGRATION HANDLER (Real fetch call) ---
+
+        async function runMigration(selectedFiles) {
+            const outputArea = document.getElementById('output-area');
+            const summaryDiv = document.getElementById('summary-output');
+            const runButton = document.getElementById('run-button');
+            
+            outputArea.innerHTML = '';
+            summaryDiv.innerHTML = '<p class="text-gray-500">Processing started...</p>';
+            runButton.disabled = true;
+
+            logOutput("============================================================", 'info');
+            logOutput("Enterprise Migration Orchestrator: Connecting to Flask...", 'info');
+            logOutput("============================================================", 'info');
+            logOutput(`⬆️ Uploading ${selectedFiles.length} file(s)...`, 'info');
+
+            const formData = new FormData();
+            selectedFiles.forEach(file => {
+                formData.append('twb_files', file);
+            });
+
+            try {
+                const response = await fetch('/api/migrate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const result = data.result;
+                    const summary = result.summary;
+                    
+                    logOutput("\n🎉 Enterprise Migration Complete!", 'success');
+                    logOutput(`\n✓ Consolidation report: ${result.output_dir}/consolidation_report.json (Check server log for details)`, 'success');
+
+                    // Display summary of generated files
+                    logOutput("\n📁 Generated LookML Files:", 'info');
+                    result.generated_files.forEach(fileName => {
+                        let logType = 'success';
+                        if (fileName.includes("GOVERNANCE_REVIEW")) {
+                           logType = summary.views_requiring_manual_review > 0 ? 'warning' : 'success';
+                        }
+                        logOutput(`✓ ${fileName}`, logType);
+                    });
+
+
+                    // Display final summary (using the successful response data)
+                    summaryDiv.innerHTML = `
+                        <div class="space-y-4">
+                            <h3 class="text-xl font-bold text-gray-800">📊 Migration Summary</h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="p-3 bg-white rounded-lg shadow-md">
+                                    <p class="text-sm text-gray-500">Workbooks Processed</p>
+                                    <p class="text-2xl font-semibold text-looker-purple">${summary.workbooks_analyzed}</p>
+                                </div>
+                                <div class="p-3 bg-white rounded-lg shadow-md">
+                                    <p class="text-sm text-gray-500">Views Consolidated</p>
+                                    <p class="text-2xl font-semibold text-looker-purple">${summary.views_before_consolidation} &rarr; ${summary.views_after_consolidation}</p>
+                                </div>
+                                <div class="p-3 bg-white rounded-lg shadow-md">
+                                    <p class="text-sm text-gray-500">Views Eliminated</p>
+                                    <p class="text-2xl font-semibold text-green-600">${summary.views_eliminated}</p>
+                                </div>
+                                <div class="p-3 bg-white rounded-lg shadow-md ${summary.views_requiring_manual_review > 0 ? 'border-2 border-red-500' : ''}">
+                                    <p class="text-sm text-gray-500">Manual Review Required</p>
+                                    <p class="text-2xl font-semibold ${summary.views_requiring_manual_review > 0 ? 'text-red-600' : 'text-green-600'}">${summary.views_requiring_manual_review} Item(s)</p>
+                                </div>
+                            </div>
+                            <div class="mt-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700 rounded-lg">
+                                <p class="font-bold">✅ SUCCESS:</p>
+                                <p class="text-sm">Migration complete! Files generated in the '${result.output_dir}' directory on the server.</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    logOutput(`\n❌ ERROR: Migration failed on the server.`, 'error');
+                    logOutput(`Details: ${data.message || 'Unknown error.'}`, 'error');
+                    summaryDiv.innerHTML = `<div class="mt-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-lg"><p class="font-bold">Migration Failed</p><p>${data.message}</p></div>`;
+                }
+            } catch (error) {
+                logOutput(`\n❌ CRITICAL FETCH ERROR: Cannot connect to Flask server.`, 'error');
+                logOutput("Details: Ensure 'python app.py' is running and accessible.", 'error');
+                summaryDiv.innerHTML = `<div class="mt-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-lg"><p class="font-bold">Server Connection Failed</p><p>Check your console for network errors.</p></div>`;
+            } finally {
+                runButton.disabled = false;
+            }
+        }
+
+        // --- UI HANDLERS AND HELPERS ---
+
+        function logOutput(message, type = 'default') {
+            const outputArea = document.getElementById('output-area');
+            const p = document.createElement('p');
+            p.textContent = message;
+            p.classList.add('font-mono', 'text-xs', 'py-0.5', 'px-1');
+            
+            switch(type) {
+                case 'info':
+                    p.classList.add('text-blue-700');
+                    break;
+                case 'success':
+                    p.classList.add('text-green-500', 'font-semibold');
+                    break;
+                case 'warning':
+                    p.classList.add('text-yellow-500');
+                    break;
+                case 'error':
+                    p.classList.add('text-red-500', 'font-bold');
+                    break;
+                default:
+                    p.classList.add('text-gray-400');
+            }
+            outputArea.appendChild(p);
+            outputArea.scrollTop = outputArea.scrollHeight;
+        }
+
+        function alertUser(message, type) {
+            const alertDiv = document.getElementById('alert-message');
+            alertDiv.textContent = message;
+            alertDiv.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-yellow-100', 'text-yellow-700', 'opacity-0');
+            
+            if (type === 'success') {
+                alertDiv.classList.add('bg-green-100', 'text-green-700');
+            } else {
+                alertDiv.classList.add('bg-red-100', 'text-red-700');
+            }
+            alertDiv.classList.add('opacity-100');
+            setTimeout(() => {
+                alertDiv.classList.add('opacity-0');
+            }, 5000);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            const fileList = document.getElementById('file-list');
+            const runButton = document.getElementById('run-button');
+            let selectedFiles = [];
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => dropZone.classList.add('border-blue-500', 'bg-blue-50'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => dropZone.classList.remove('border-blue-500', 'bg-blue-50'), false);
+            });
+
+            dropZone.addEventListener('drop', handleDrop, false);
+
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const newFiles = [...dt.files].filter(f => f.name.toLowerCase().endsWith('.twb'));
+                
+                if (newFiles.length > 0) {
+                    selectedFiles = newFiles;
+                    renderFileList(selectedFiles);
+                } else {
+                    alertUser("Please drop only Tableau Workbook (.twb) files.", 'error');
+                }
+            }
+
+            fileInput.addEventListener('change', (e) => {
+                selectedFiles = [...e.target.files].filter(f => f.name.toLowerCase().endsWith('.twb'));
+                renderFileList(selectedFiles);
+            });
+
+            function renderFileList(files) {
+                fileList.innerHTML = '';
+                if (files.length === 0) {
+                    fileList.innerHTML = '<p class="text-sm text-gray-500">No .twb files selected.</p>';
+                    return;
+                }
+                files.forEach(file => {
+                    const li = document.createElement('li');
+                    li.textContent = `✓ ${file.name}`;
+                    li.classList.add('text-sm', 'text-gray-800', 'truncate');
+                    fileList.appendChild(li);
+                });
+            }
+
+            runButton.addEventListener('click', () => {
+                if (selectedFiles.length > 0) {
+                    runMigration(selectedFiles);
+                } else {
+                    alertUser("Please select one or more TWB files before running.", 'error');
+                }
+            });
+            
+            // Link file input click to drop zone click
+            dropZone.addEventListener('click', () => fileInput.click());
+        });
+    </script>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto space-y-8">
+        <!-- Header -->
+        <header class="flex items-center space-x-3 pb-4 border-b border-gray-300">
+            <!-- Looker icon/Logo placeholder -->
+            <svg class="w-8 h-8 text-looker-purple" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/>
+            </svg>
+            <h1 class="text-3xl font-extrabold text-gray-900">Enterprise Migration Accelerator</h1>
+            <span class="text-lg text-gray-500 italic">| Tableau to Looker</span>
+        </header>
+
+        <!-- Main Grid Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Left Column: Input and Configuration -->
+            <div class="lg:col-span-1 space-y-6">
+
+                <!-- File Upload Zone -->
+                <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">1. Select Tableau Workbooks (.twb)</h2>
+                    
+                    <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-500 transition duration-150">
+                        <p class="text-sm font-medium text-gray-700">Drag & Drop TWB Files Here</p>
+                        <p class="text-xs text-gray-500 mt-1">or click to browse</p>
+                        <input type="file" id="file-input" name="twb_files" multiple accept=".twb" class="hidden">
+                    </div>
+
+                    <div class="mt-4 p-3 bg-gray-50 rounded-lg">
+                        <h3 class="font-semibold text-sm text-gray-700 mb-2">Selected Files:</h3>
+                        <ul id="file-list" class="space-y-1">
+                            <p class="text-sm text-gray-500">No .twb files selected.</p>
+                        </ul>
+                    </div>
+
+                    <button id="run-button" class="mt-6 w-full px-4 py-3 bg-looker-purple text-white font-bold rounded-lg hover:bg-opacity-90 transition duration-150 shadow-md">
+                        🚀 Run Migration
+                    </button>
+                    
+                    <div id="alert-message" class="hidden mt-4 p-3 text-sm rounded-lg opacity-0 transition duration-300"></div>
+                </div>
+
+                <!-- Governance Score & Configuration (Future Partner Feature) -->
+                <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">2. Migration Governance</h2>
+                    <p class="text-sm text-gray-600 mb-4">
+                        A **Complexity Score** (C-Score) helps prioritize manual review efforts. Adjusting weights here provides transparency and aligns migration risk with customer standards.
+                    </p>
+                    <div class="flex items-center justify-between text-sm text-gray-700 py-1">
+                        <span class="font-medium">LOD/Calc Complexity</span>
+                        <span class="font-semibold text-looker-purple">Weight: 35%</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm text-gray-700 py-1">
+                        <span class="font-medium">Data Consolidation Index</span>
+                        <span class="font-semibold text-looker-purple">Weight: 20%</span>
+                    </div>
+                    <button class="mt-3 w-full px-4 py-2 text-sm text-looker-purple border border-looker-purple rounded-lg hover:bg-looker-purple hover:text-white transition duration-150">
+                        View/Adjust Complexity Rubric
+                    </button>
+                </div>
+
+            </div>
+
+            <!-- Right Column: Output and Summary -->
+            <div class="lg:col-span-2 space-y-6">
+
+                <!-- Summary Output -->
+                <div id="summary-output" class="p-6 bg-gray-100 rounded-xl shadow-inner border border-gray-300 min-h-[150px]">
+                    <p class="text-gray-500">Press 'Run Migration' to begin analysis and LookML generation.</p>
+                </div>
+
+                <!-- Console Output -->
+                <div class="p-4 bg-gray-900 rounded-xl shadow-lg">
+                    <h2 class="text-lg font-semibold text-white mb-2">Console Output</h2>
+                    <div id="output-area" class="h-64 overflow-y-auto bg-black text-gray-400 p-3 rounded-lg shadow-inner">
+                        <!-- Output messages will appear here -->
+                        <p class="font-mono text-xs text-gray-600">Waiting for user input...</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</body>
+</html>
+

@@ -1,0 +1,6 @@
+﻿Flask>=2.0.0
+pathlib
+Werkzeug
+python-dateutil
+Optionally, if using a commercial Tableau SDK:
+tableau-migration-sdk

@@ -1,0 +1,23 @@
+# **Python Bytecode**
+
+\*.pyc  
+pycache/
+
+# **Virtual Environment**
+
+venv/  
+.venv/
+
+# **Flask & Uploads**
+
+/uploads/  
+/output/
+
+# **Logs**
+
+\*.log
+
+# **Operating System Files**
+
+.DS\_Store  
+Thumbs.db

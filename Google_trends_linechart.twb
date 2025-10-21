@@ -1,0 +1,134 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<!-- TWB for Google BigQuery Custom SQL and Line Chart -->
+<workbook original-version='18.1' source-build='20252.25.0903.1422' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <datasources>
+    <!-- 
+      Datasource Definition: Connecting to Google BigQuery Public Dataset via Custom SQL 
+    -->
+    <datasource caption='Google Trends Rising Terms' inline='true' name='bigquery.customsql.1a2b3c4d5e' version='18.1'>
+      <connection class='bigquery' dbname='google_trends' default-settings='bigquery' project='bigquery-public-data' authentication='oauth'>
+        
+        <!-- 
+          The core connection to the public data project. The actual SQL is defined in the <relation> tag below.
+        -->
+        <named-connections>
+          <named-connection caption='Google BigQuery Public Data' name='google_bigquery_public_data'>
+            <connection class='bigquery' service-account-user='' project='bigquery-public-data' />
+          </named-connection>
+        </named-connections>
+        
+        <!-- 
+          RELATION: Defines the data structure as the result of a Custom SQL query (your query).
+          I've slightly adjusted the final SELECT to pull 'score' and 'rank' directly for plotting.
+        -->
+        <relation name='Custom SQL Query' type='text'>
+          <query>
+            SELECT
+              term,
+              week,
+              (SELECT rank FROM UNNEST(x)) AS rank,
+              (SELECT score FROM UNNEST(x)) AS score
+            FROM
+                (
+                SELECT
+                  term,
+                  week,
+                  ARRAY_AGG(STRUCT(rank, score) ORDER BY score DESC LIMIT 1) x
+                FROM
+                    `bigquery-public-data.google_trends.top_rising_terms`
+                WHERE
+                    week = 
+                        (SELECT DATE_SUB(MAX(week), INTERVAL 52 week) FROM `bigquery-public-data.google_trends.top_rising_terms`) 
+                    AND refresh_date = 
+                        (SELECT MAX(refresh_date) FROM `bigquery-public-data.google_trends.top_rising_terms`) 
+                GROUP BY    
+                    term, week
+                )
+            ORDER BY rank
+          </query>
+        </relation>
+        
+        <!-- METADATA: Defining the fields Tableau sees from the custom query result -->
+        <metadata-records>
+          <metadata-record class='column'>
+            <remote-name>term</remote-name>
+            <local-name>[term]</local-name>
+            <local-type>string</local-type>
+            <role>dimension</role>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>week</remote-name>
+            <local-name>[week]</local-name>
+            <local-type>date</local-type>
+            <role>dimension</role>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>score</remote-name>
+            <local-name>[score]</local-name>
+            <local-type>integer</local-type>
+            <role>measure</role>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>rank</remote-name>
+            <local-name>[rank]</local-name>
+            <local-type>integer</local-type>
+            <role>measure</role>
+          </metadata-record>
+        </metadata-records>
+      </connection>
+      
+      <!-- Aliases and Custom Column Definitions -->
+      <aliases enabled='yes' />
+      <column caption='Score' datatype='integer' name='[score]' role='measure' type='quantitative' />
+      <column caption='Week' datatype='date' name='[week]' role='dimension' type='quantitative' />
+      
+      <layout dim-ordering='alphabetic' measure-ordering='alphabetic' show-structure='true' />
+    </datasource>
+  </datasources>
+  
+  <worksheets>
+    <worksheet name='Top Rising Terms Trend'>
+      <table>
+        <view>
+          <datasources>
+            <datasource name='bigquery.customsql.1a2b3c4d5e' />
+          </datasources>
+          <datasource-dependencies datasource='bigquery.customsql.1a2b3c4d5e'>
+            <column datatype='integer' name='[score]' role='measure' type='quantitative' />
+            <column datatype='string' name='[term]' role='dimension' type='nominal' />
+            <column datatype='date' name='[week]' role='dimension' type='quantitative' />
+            
+            <!-- Instance for Week (Column Shelf - Continuous Date) -->
+            <column-instance column='[week]' derivation='Week-Trunc' name='[wk:week:ok]' pivot='key' type='ordinal' />
+            <!-- Instance for Score (Row Shelf - Sum Aggregation) -->
+            <column-instance column='[score]' derivation='Sum' name='[sum:score:qk]' pivot='key' type='quantitative' />
+            <!-- Instance for Term (Color Mark - Dimension) -->
+            <column-instance column='[term]' derivation='None' name='[none:term:nk]' pivot='key' type='nominal' />
+          </datasource-dependencies>
+          <aggregation value='true' />
+        </view>
+        <style>
+          <style-rule element='mark'>
+            <format attr='mark-type' value='line' />
+            <format attr='size' value='3' />
+          </style-rule>
+        </style>
+        <panes>
+          <pane>
+            <mark class='Line' />
+            <encodings>
+              <!-- Color: Separate lines for each term -->
+              <color column='[bigquery.customsql.1a2b3c4d5e].[none:term:nk]' />
+            </encodings>
+          </pane>
+        </panes>
+        <!-- Rows: Score (Y-Axis) -->
+        <rows>[bigquery.customsql.1a2b3c4d5e].[sum:score:qk]</rows>
+        <!-- Columns: Week (X-Axis - Time Series) -->
+        <cols>[bigquery.customsql.1a2b3c4d5e].[wk:week:ok]</cols>
+      </table>
+      <simple-id uuid='{A1B2C3D4-E5F6-7890-ABCD-EF0123456789}' />
+    </worksheet>
+  </worksheets>
+</workbook>
+
