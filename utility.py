@@ -1,8 +1,4 @@
-"""
-Enterprise Multi-Workbook Migration Orchestrator
-Handles consolidation of multiple Tableau workbooks into a unified Looker project
-Author: Built for Robert Hendriks
-"""
+
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Set, Optional, Tuple
